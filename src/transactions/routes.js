@@ -4,7 +4,7 @@ import { createTransactionSchema, idSchema, listSchema, parse } from './schema.j
 
 export function transactionRoutes(repository) {
   const router = Router();
-  router.post('/', async (req, res) => {
+  async function createTransaction(req, res) {
     if (!req.is('application/json')) {
       throw new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Content-Type must be application/json');
     }
@@ -23,15 +23,25 @@ export function transactionRoutes(repository) {
       throw err;
     }
     res.location(`/api/v1/transactions/${transaction.id}`).status(201).json({ data: transaction });
-  });
-  router.get('/', async (req, res) =>
-    res.json(await repository.list(parse(listSchema, req.query))),
-  );
-  router.get('/:id', async (req, res) => {
+  }
+
+  async function listTransactions(req, res) {
+    const pagination = parse(listSchema, req.query);
+    const result = await repository.list(pagination);
+    res.json(result);
+  }
+
+  async function getTransaction(req, res) {
     const { id } = parse(idSchema, req.params);
     const transaction = await repository.findById(id);
-    if (!transaction) throw new HttpError(404, 'NOT_FOUND', 'Transaction not found');
+    if (!transaction) {
+      throw new HttpError(404, 'NOT_FOUND', 'Transaction not found');
+    }
     res.json({ data: transaction });
-  });
+  }
+
+  router.post('/', createTransaction);
+  router.get('/', listTransactions);
+  router.get('/:id', getTransaction);
   return router;
 }

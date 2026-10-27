@@ -19,10 +19,14 @@ async function shutdown(reason, exitCode = 0) {
   }, 15000);
   timeout.unref();
   try {
-    if (server)
-      await new Promise((resolve, reject) =>
-        server.close((err) => (err ? reject(err) : resolve())),
-      );
+    if (server) {
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
     await pool.end();
     process.exitCode = exitCode;
   } catch (err) {
@@ -35,24 +39,13 @@ async function shutdown(reason, exitCode = 0) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('unhandledRejection', (err) => {
-  logger.fatal({ err }, 'Unhandled rejection');
-  void shutdown('unhandledRejection', 1);
-});
-process.on('uncaughtException', (err) => {
-  logger.fatal({ err }, 'Uncaught exception');
-  void shutdown('uncaughtException', 1);
-});
 
 try {
   await pool.query('SELECT id FROM transactions LIMIT 0');
   const app = createApp({ config, pool, logger });
-  server = app.listen(config.PORT, config.HOST, () => {
-    logger.info({ port: config.PORT, environment: config.NODE_ENV }, 'API listening');
+  server = app.listen(config.PORT, '0.0.0.0', () => {
+    logger.info(`API listening on http://localhost:${config.PORT}`);
   });
-  server.requestTimeout = 30000;
-  server.headersTimeout = 15000;
-  server.keepAliveTimeout = 5000;
   server.on('error', (err) => {
     logger.fatal({ err }, 'HTTP server error');
     void shutdown('server error', 1);

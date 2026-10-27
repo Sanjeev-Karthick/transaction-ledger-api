@@ -1,10 +1,5 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
-import { loadConfig } from '../config.js';
-import { createLogger } from '../logger.js';
-import { createPool } from './pool.js';
 
 export async function migrate(pool, logger) {
   const client = await pool.connect();
@@ -55,17 +50,3 @@ export async function migrate(pool, logger) {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const config = loadConfig();
-  const logger = createLogger(config);
-  const pool = createPool(config, logger);
-  try {
-    await migrate(pool, logger);
-    logger.info('Database migrations complete');
-  } catch (err) {
-    logger.error({ err }, 'Migration failed');
-    process.exitCode = 1;
-  } finally {
-    await pool.end();
-  }
-}

@@ -3,7 +3,6 @@ import { z } from 'zod';
 const boolean = z.enum(['true', 'false']).transform((value) => value === 'true');
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  HOST: z.string().min(1).default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z
     .string()
@@ -19,15 +18,11 @@ const schema = z.object({
         return false;
       }
     }, 'Use a PostgreSQL URL without ssl parameters; configure TLS through DB_SSL instead'),
-  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   DB_SSL: boolean.default('false'),
   DB_SSL_CA_FILE: z.string().default(''),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DOCS_ENABLED: boolean.optional(),
   CORS_ORIGINS: z.string().default(''),
-  TRUST_PROXY: z.string().default(''),
-  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60000),
-  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(100),
 });
 
 export function loadConfig(env = process.env) {
@@ -57,8 +52,5 @@ export function loadConfig(env = process.env) {
     ...value,
     DOCS_ENABLED: value.DOCS_ENABLED ?? value.NODE_ENV !== 'production',
     corsOrigins,
-    trustProxy: value.TRUST_PROXY.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
   };
 }

@@ -123,13 +123,16 @@ test('duplicate references produce conflict', async () => {
 });
 test('rate limiting and CORS allowlist', async () => {
   const instance = app({
-    config: { ...config, RATE_LIMIT_MAX: 1, corsOrigins: ['https://example.com'] },
+    config: { ...config, corsOrigins: ['https://example.com'] },
   });
   const allowed = await request(instance)
     .get('/api/v1/transactions')
     .set('Origin', 'https://example.com')
     .expect(200);
   assert.equal(allowed.headers['access-control-allow-origin'], 'https://example.com');
+  for (let count = 1; count < 100; count++) {
+    await request(instance).get('/api/v1/transactions').expect(200);
+  }
   const limited = await request(instance).get('/api/v1/transactions').expect(429);
   assert.equal(limited.body.error.code, 'RATE_LIMITED');
   const denied = await request(app()).get('/health/live').set('Origin', 'https://evil.example');

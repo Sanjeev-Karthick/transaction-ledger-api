@@ -20,7 +20,6 @@ export function createApp({
 }) {
   const app = express();
   app.disable('x-powered-by');
-  if (config.trustProxy.length) app.set('trust proxy', config.trustProxy);
   app.use(
     pinoHttp({
       logger,
@@ -39,8 +38,7 @@ export function createApp({
   app.use(helmet());
   app.use(
     cors({
-      origin: (origin, callback) =>
-        callback(null, Boolean(origin && config.corsOrigins.includes(origin))),
+      origin: config.corsOrigins,
       methods: ['GET', 'POST', 'OPTIONS'],
     }),
   );
@@ -61,8 +59,8 @@ export function createApp({
   app.use(
     '/api',
     rateLimit({
-      windowMs: config.RATE_LIMIT_WINDOW_MS,
-      limit: config.RATE_LIMIT_MAX,
+      windowMs: 60000,
+      limit: 100,
       standardHeaders: 'draft-8',
       legacyHeaders: false,
       handler: (req, _res, next) => next(new HttpError(429, 'RATE_LIMITED', 'Too many requests')),
