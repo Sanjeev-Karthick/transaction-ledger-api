@@ -1,0 +1,290 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Transaction Ledger API",
+    "version": "1.0.0",
+    "description": "Append-only transaction example. Amounts are positive integer strings in currency minor units (1099 = USD 10.99); direction expresses credit/debit. Currency syntax is checked, not ISO membership or currency-specific decimal rules. This starter has no authentication and is not a double-entry accounting ledger. Do not expose it publicly without access control."
+  },
+  "servers": [{ "url": "/", "description": "Current server" }],
+  "tags": [{ "name": "Health" }, { "name": "Transactions" }],
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "liveness",
+        "summary": "Process liveness",
+        "responses": { "200": { "$ref": "#/components/responses/Healthy" } }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "readiness",
+        "summary": "Database and schema readiness",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Healthy" },
+          "503": {
+            "description": "Database or schema unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": { "status": { "type": "string", "enum": ["unavailable"] } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactions": {
+      "post": {
+        "tags": ["Transactions"],
+        "operationId": "createTransaction",
+        "summary": "Append a transaction",
+        "description": "References are unique and case-sensitive. A repeated reference returns 409, not a replayed success. Clients must reconcile uncertain outcomes rather than blindly retry with new references.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTransaction" },
+              "example": {
+                "reference": "order-1001",
+                "amountMinor": "1099",
+                "currency": "USD",
+                "direction": "credit",
+                "description": "Example payment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "headers": {
+              "Location": {
+                "schema": { "type": "string" },
+                "description": "Relative URI of created transaction"
+              },
+              "X-Request-Id": {
+                "schema": { "type": "string", "format": "uuid" },
+                "description": "Server-generated request ID"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransactionResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "get": {
+        "tags": ["Transactions"],
+        "operationId": "listTransactions",
+        "summary": "List newest transactions first",
+        "description": "Ordered by creation time descending, then UUID descending. Offset pagination is bounded and can shift when records are inserted concurrently; use cursor pagination for large or high-write datasets.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 100000, "default": 0 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated transactions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "pagination"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Transaction" }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "required": ["limit", "offset", "hasMore"],
+                      "properties": {
+                        "limit": { "type": "integer" },
+                        "offset": { "type": "integer" },
+                        "hasMore": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}": {
+      "get": {
+        "tags": ["Transactions"],
+        "operationId": "getTransaction",
+        "summary": "Get a transaction by UUID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransactionResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateTransaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reference", "amountMinor", "currency", "direction"],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-zA-Z0-9._:-]+$",
+            "description": "Trimmed before validation"
+          },
+          "amountMinor": { "type": "string", "pattern": "^[1-9][0-9]{0,17}$", "example": "1099" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "example": "USD" },
+          "direction": { "type": "string", "enum": ["credit", "debit"] },
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "default": "",
+            "description": "Trimmed before validation"
+          }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "required": [
+          "id",
+          "reference",
+          "amountMinor",
+          "currency",
+          "direction",
+          "description",
+          "createdAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "reference": { "type": "string" },
+          "amountMinor": { "type": "string", "pattern": "^[1-9][0-9]{0,17}$" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "direction": { "type": "string", "enum": ["credit", "debit"] },
+          "description": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TransactionResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/Transaction" } }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "requestId"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string", "format": "uuid" },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["field", "message"],
+                  "properties": { "field": { "type": "string" }, "message": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Healthy": {
+        "description": "Healthy",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["status"],
+              "properties": { "status": { "type": "string", "enum": ["ok"] } }
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Validation failed or malformed JSON",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "Reference already exists",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Transaction not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "PayloadTooLarge": {
+        "description": "Request body exceeds 32 KB",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "Expected application/json or unsupported encoding",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "RateLimited": {
+        "description": "Rate limit exceeded",
+        "headers": {
+          "Retry-After": { "description": "Seconds until retry", "schema": { "type": "integer" } }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "InternalError": {
+        "description": "Unexpected server error",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  }
+}
