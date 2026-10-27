@@ -1,31 +1,27 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "REST API Starter",
+    "title": "Transaction Ledger API",
     "version": "1.0.0",
-    "description": "A health check and a starter endpoint. No business models or tables are defined yet."
+    "description": "Exact-decimal accounts, credits, debits, history and atomic transfers. Amounts must be positive with up to 16 integer digits and 2 decimal places. Money responses are strings. No authentication is included."
   },
   "servers": [{ "url": "/" }],
   "paths": {
     "/health": {
       "get": {
-        "operationId": "healthCheck",
-        "summary": "Check API and PostgreSQL connectivity",
+        "operationId": "health",
+        "summary": "Check database connectivity",
         "responses": {
           "200": {
-            "description": "API and database are available",
+            "description": "Connected",
             "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Health" },
-                "example": { "status": "ok", "database": "connected" }
-              }
+              "application/json": { "example": { "status": "ok", "database": "connected" } }
             }
           },
           "503": {
-            "description": "Database is unavailable",
+            "description": "Unavailable",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Health" },
                 "example": { "status": "unavailable", "database": "disconnected" }
               }
             }
@@ -36,38 +32,331 @@
     "/api/v1/starter": {
       "get": {
         "operationId": "starter",
-        "summary": "Starter API response",
+        "summary": "Starter endpoint",
         "responses": {
           "200": {
-            "description": "API is running; this endpoint does not query the database",
+            "description": "Ready",
+            "content": { "application/json": { "example": { "message": "API is ready" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts": {
+      "post": {
+        "operationId": "createAccount",
+        "summary": "Create account; balance is always zero",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccount" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["message"],
-                  "properties": { "message": { "type": "string", "example": "API is ready" } }
+                  "properties": { "data": { "$ref": "#/components/schemas/Account" } }
                 }
               }
             }
           },
-          "429": {
-            "description": "More than 100 requests per minute from this client",
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "415": { "$ref": "#/components/responses/MediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" }
+        }
+      }
+    },
+    "/api/v1/accounts/{accountId}/balance": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "operationId": "getBalance",
+        "summary": "Get account balance",
+        "responses": {
+          "200": {
+            "description": "Balance",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": ["account_id", "balance"],
+                      "properties": {
+                        "account_id": { "type": "string", "format": "uuid" },
+                        "balance": { "type": "string", "example": "100.00" }
+                      }
+                    }
+                  }
+                }
+              }
             }
+          },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" }
+        }
+      }
+    },
+    "/api/v1/accounts/{accountId}/transactions": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "post": {
+        "operationId": "addTransaction",
+        "summary": "Credit or debit atomically",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransaction" } }
           }
+        },
+        "responses": {
+          "201": {
+            "description": "Transaction and updated balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "transaction": { "$ref": "#/components/schemas/Transaction" },
+                        "balance": { "type": "string", "example": "100.00" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "415": { "$ref": "#/components/responses/MediaType" },
+          "422": { "$ref": "#/components/responses/OutOfRange" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" }
+        }
+      },
+      "get": {
+        "operationId": "getHistory",
+        "summary": "Get latest-first history",
+        "description": "Sort: created_at DESC, id DESC. Count and records share one snapshot. Pages beyond the end return an empty array.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["credit", "debit"] }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Transaction" }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "page": { "type": "integer" },
+                        "limit": { "type": "integer" },
+                        "total_records": { "type": "integer" },
+                        "total_pages": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" }
+        }
+      }
+    },
+    "/api/v1/transfers": {
+      "post": {
+        "operationId": "transfer",
+        "summary": "Transfer money atomically",
+        "description": "Accounts must differ. The reference must be unused on both accounts. Both balances and both immutable entries commit together, or nothing is persisted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransfer" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transfer completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "debit": { "$ref": "#/components/schemas/Transaction" },
+                        "credit": { "$ref": "#/components/schemas/Transaction" },
+                        "source_balance": { "type": "string" },
+                        "destination_balance": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "415": { "$ref": "#/components/responses/MediaType" },
+          "422": { "$ref": "#/components/responses/OutOfRange" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" }
         }
       }
     }
   },
   "components": {
+    "parameters": {
+      "AccountId": {
+        "name": "accountId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "responses": {
+      "Invalid": {
+        "description": "Invalid body, UUID, amount, type or pagination",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Account not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "DUPLICATE_TRANSACTION or INSUFFICIENT_BALANCE. No changes persisted.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "MediaType": {
+        "description": "Expected application/json",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "OutOfRange": {
+        "description": "Amount or resulting balance exceeds supported range",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "RateLimited": {
+        "description": "Too many requests",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Internal": {
+        "description": "Unexpected error; writes rolled back",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
     "schemas": {
-      "Health": {
+      "Amount": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d{0,15})(?:\\.\\d{1,2})?$",
+            "example": "100.50"
+          },
+          { "type": "number", "minimum": 0, "exclusiveMinimum": true, "example": 100.5 }
+        ],
+        "description": "Greater than zero, at most 16 integer digits and 2 decimal places. Strings recommended for exact precision. Scientific notation and extra precision in strings are rejected."
+      },
+      "CreateAccount": {
         "type": "object",
-        "required": ["status", "database"],
+        "additionalProperties": false,
+        "required": ["name"],
         "properties": {
-          "status": { "type": "string", "enum": ["ok", "unavailable"] },
-          "database": { "type": "string", "enum": ["connected", "disconnected"] }
+          "name": { "type": "string", "minLength": 1, "maxLength": 100, "example": "Alice" }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": ["id", "name", "balance", "created_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "balance": { "type": "string", "example": "0.00" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateTransaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "amount", "reference_id"],
+        "properties": {
+          "type": { "type": "string", "enum": ["credit", "debit"] },
+          "amount": { "$ref": "#/components/schemas/Amount" },
+          "description": { "type": "string", "maxLength": 500, "default": "" },
+          "reference_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "payment-001"
+          }
+        }
+      },
+      "CreateTransfer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_account_id", "destination_account_id", "amount", "reference_id"],
+        "properties": {
+          "source_account_id": { "type": "string", "format": "uuid" },
+          "destination_account_id": { "type": "string", "format": "uuid" },
+          "amount": { "$ref": "#/components/schemas/Amount" },
+          "description": { "type": "string", "maxLength": 500, "default": "" },
+          "reference_id": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "type",
+          "amount",
+          "description",
+          "reference_id",
+          "created_at"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "account_id": { "type": "string", "format": "uuid" },
+          "type": { "type": "string", "enum": ["credit", "debit"] },
+          "amount": { "type": "string", "example": "100.50" },
+          "description": { "type": "string" },
+          "reference_id": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "Error": {
@@ -80,7 +369,11 @@
             "properties": {
               "code": { "type": "string" },
               "message": { "type": "string" },
-              "requestId": { "type": "string", "format": "uuid" }
+              "requestId": { "type": "string", "format": "uuid" },
+              "details": {
+                "description": "Optional field validation array or duplicate transaction identifiers",
+                "oneOf": [{ "type": "array", "items": { "type": "object" } }, { "type": "object" }]
+              }
             }
           }
         }

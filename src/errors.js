@@ -16,6 +16,18 @@ export function errorHandler(err, req, res, _next) {
     error = new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Request body exceeds the 32 KB limit');
   } else if (err.status === 415) {
     error = new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Unsupported request encoding');
+  } else if (err.code === '23505' && err.constraint === 'account_transactions_reference_key') {
+    error = new HttpError(
+      409,
+      'DUPLICATE_TRANSACTION',
+      'Transaction reference already exists for this account',
+    );
+  } else if (err.code === '22003') {
+    error = new HttpError(
+      422,
+      'AMOUNT_OUT_OF_RANGE',
+      'Amount or resulting balance exceeds the supported range',
+    );
   }
   const known = error instanceof HttpError;
   if (!known || error.status >= 500) req.log.error({ err }, 'Request failed');

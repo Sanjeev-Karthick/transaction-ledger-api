@@ -7,10 +7,12 @@ import { rateLimit } from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import { HttpError, errorHandler } from './errors.js';
+import { ledgerRoutes } from './ledger/routes.js';
+import { createLedgerRepository } from './ledger/repository.js';
 
 const openapi = JSON.parse(readFileSync(new URL('../docs/openapi.json', import.meta.url), 'utf8'));
 
-export function createApp({ config, pool, logger }) {
+export function createApp({ config, pool, logger, repository = createLedgerRepository(pool) }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(
@@ -62,6 +64,7 @@ export function createApp({ config, pool, logger }) {
   app.get('/api/v1/starter', function starter(_req, res) {
     res.json({ message: 'API is ready' });
   });
+  app.use('/api/v1', ledgerRoutes(repository));
   if (config.DOCS_ENABLED) {
     app.get('/openapi.json', (_req, res) => res.json(openapi));
     // Scoped Swagger CSP override; API responses retain the full Helmet defaults.

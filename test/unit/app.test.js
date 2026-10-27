@@ -50,7 +50,7 @@ test('starter returns a simple response and security headers', async () => {
   assert.equal(response.headers['x-powered-by'], undefined);
 });
 
-test('transaction routes and unknown routes are absent', async () => {
+test('unknown routes return consistent errors', async () => {
   for (const path of ['/api/v1/transactions', '/health/live', '/health/ready', '/missing']) {
     const response = await request(createTestApp()).get(path).expect(404);
     assert.equal(response.body.error.code, 'NOT_FOUND');
@@ -66,9 +66,10 @@ test('malformed JSON returns a readable error', async () => {
   assert.equal(response.body.error.code, 'INVALID_JSON');
 });
 
-test('docs describe only the health and starter APIs', async () => {
+test('docs describe the health, starter and ledger APIs', async () => {
   const response = await request(createTestApp()).get('/openapi.json').expect(200);
-  assert.deepEqual(Object.keys(response.body.paths), ['/health', '/api/v1/starter']);
+  assert.ok(response.body.paths['/health']);
+  assert.ok(response.body.paths['/api/v1/accounts']);
   await request(createTestApp()).get('/docs/').expect(200);
   const app = createTestApp({ config: { ...config, DOCS_ENABLED: false } });
   await request(app).get('/openapi.json').expect(404);

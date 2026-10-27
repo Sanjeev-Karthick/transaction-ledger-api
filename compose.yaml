@@ -22,6 +22,7 @@ services:
   api:
     build: .
     init: true
+    command: [sh, -c, 'node scripts/migrate.js && exec node src/server.js']
     restart: unless-stopped
     environment:
       NODE_ENV: production

@@ -11,6 +11,8 @@ COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node docs ./docs
+COPY --chown=node:node migrations ./migrations
+COPY --chown=node:node scripts/migrate.js ./scripts/migrate.js
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
