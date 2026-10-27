@@ -49,4 +49,3 @@ export async function migrate(pool, logger) {
     }
   }
 }
-

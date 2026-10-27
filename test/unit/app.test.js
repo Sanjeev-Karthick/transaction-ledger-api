@@ -146,6 +146,9 @@ test('docs are available when enabled and absent when disabled', async () => {
     .expect(404);
 });
 test('configuration validates values and defaults docs off in production', () => {
+  assert.equal(config.DB_SSL, false);
+  assert.equal(loadConfig({ DATABASE_URL: config.DATABASE_URL, DB_SSL: 'true' }).DB_SSL, true);
+  assert.equal(loadConfig({ DATABASE_URL: config.DATABASE_URL, DB_SSL: 'false' }).DB_SSL, false);
   assert.throws(() => loadConfig({}), /Invalid configuration/);
   assert.throws(() => loadConfig({ DATABASE_URL: 'https://example.com' }), /Invalid configuration/);
   assert.throws(() => loadConfig({ DATABASE_URL: config.DATABASE_URL, DB_SSL: 'yes' }), /DB_SSL/);

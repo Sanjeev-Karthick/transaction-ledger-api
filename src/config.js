@@ -18,7 +18,7 @@ const schema = z.object({
         return false;
       }
     }, 'Use a PostgreSQL URL without ssl parameters; configure TLS through DB_SSL instead'),
-  DB_SSL: boolean.default('false'),
+  DB_SSL: boolean.default(false),
   DB_SSL_CA_FILE: z.string().default(''),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DOCS_ENABLED: boolean.optional(),
