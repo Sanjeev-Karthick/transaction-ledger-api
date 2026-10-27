@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 
-// Requires migrated PostgreSQL and a free port 3001. Does not alter application records.
+// Requires PostgreSQL and a free port 3001. Does not create tables or records.
 const child = spawn(process.execPath, ['--env-file-if-exists=.env', 'src/server.js'], {
   env: { ...process.env, PORT: '3001' },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -21,7 +21,7 @@ try {
   for (let attempt = 0; attempt < 50; attempt++) {
     if (child.exitCode !== null) break;
     try {
-      const response = await fetch('http://127.0.0.1:3001/health/ready', {
+      const response = await fetch('http://127.0.0.1:3001/health', {
         signal: AbortSignal.timeout(1000),
       });
       if (response.ok) {

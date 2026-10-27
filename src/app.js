@@ -7,17 +7,10 @@ import { rateLimit } from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import { HttpError, errorHandler } from './errors.js';
-import { transactionRoutes } from './transactions/routes.js';
-import { createTransactionRepository } from './transactions/repository.js';
 
 const openapi = JSON.parse(readFileSync(new URL('../docs/openapi.json', import.meta.url), 'utf8'));
 
-export function createApp({
-  config,
-  pool,
-  logger,
-  repository = createTransactionRepository(pool),
-}) {
+export function createApp({ config, pool, logger }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(
@@ -46,14 +39,13 @@ export function createApp({
     res.setHeader('Cache-Control', 'no-store');
     next();
   });
-  app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
-  app.get('/health/ready', async (_req, res) => {
+  app.get('/health', async function healthCheck(req, res) {
     try {
-      // A table check catches missing migrations, not just database connectivity.
-      await pool.query('SELECT id FROM transactions LIMIT 0');
-      res.json({ status: 'ok' });
-    } catch {
-      res.status(503).json({ status: 'unavailable' });
+      await pool.query('SELECT 1');
+      res.json({ status: 'ok', database: 'connected' });
+    } catch (error) {
+      req.log.error({ err: error }, 'Database health check failed');
+      res.status(503).json({ status: 'unavailable', database: 'disconnected' });
     }
   });
   app.use(
@@ -67,7 +59,9 @@ export function createApp({
     }),
   );
   app.use(express.json({ limit: '32kb' }));
-  app.use('/api/v1/transactions', transactionRoutes(repository));
+  app.get('/api/v1/starter', function starter(_req, res) {
+    res.json({ message: 'API is ready' });
+  });
   if (config.DOCS_ENABLED) {
     app.get('/openapi.json', (_req, res) => res.json(openapi));
     // Scoped Swagger CSP override; API responses retain the full Helmet defaults.

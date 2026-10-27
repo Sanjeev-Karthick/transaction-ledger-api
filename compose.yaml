@@ -29,8 +29,6 @@ services:
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-    # Run migrations before starting this single API instance.
-    command: [sh, -c, 'node scripts/migrate.js && exec node src/server.js']
     ports:
       - '127.0.0.1:${PORT:-3000}:3000'
     stop_grace_period: 20s

@@ -41,7 +41,6 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 try {
-  await pool.query('SELECT id FROM transactions LIMIT 0');
   const app = createApp({ config, pool, logger });
   server = app.listen(config.PORT, '0.0.0.0', () => {
     logger.info(`API listening on http://localhost:${config.PORT}`);
@@ -51,6 +50,6 @@ try {
     void shutdown('server error', 1);
   });
 } catch (err) {
-  logger.fatal({ err }, 'Startup failed; verify database connectivity and run migrations');
+  logger.fatal({ err }, 'API startup failed');
   await shutdown('startup failure', 1);
 }
