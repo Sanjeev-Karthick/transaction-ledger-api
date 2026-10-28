@@ -1,9 +1,12 @@
 # Transaction Ledger API
 
-A Node.js, Express and PostgreSQL API for accounts, credits, debits, transaction history
-and atomic transfers. JavaScript uses CommonJS (`require` / `module.exports`).
+A small ledger API built with Node.js, Express and PostgreSQL. You can create an account,
+credit or debit it, check its balance and browse its transaction history. Transfers between
+accounts are supported too: either both sides succeed, or neither does.
 
-## Submission links
+The code uses CommonJS (`require` / `module.exports`).
+
+## Project links
 
 - [Source code](https://github.com/Sanjeev-Karthick/transaction-ledger-api)
 - [API documentation — OpenAPI](docs/openapi.json)
@@ -20,12 +23,12 @@ and atomic transfers. JavaScript uses CommonJS (`require` / `module.exports`).
 | Swagger UI                          | [Explore and try the API](https://transaction-ledger-api-qce8.onrender.com/docs/)         |
 | OpenAPI specification               | [Hosted API specification](https://transaction-ledger-api-qce8.onrender.com/openapi.json) |
 
-The API base URL is a prefix, not a homepage. Use the health check to check availability
-or Swagger UI to explore the endpoints.
+Start with Swagger if you want to try it out in your browser. The base URL doesn't have a
+homepage; the health endpoint checks that both the API and database are available.
 
-## Quick start — Docker
+## Run with Docker
 
-Requires Docker Desktop.
+Docker Desktop is all you need for this option.
 
 ```sh
 git clone https://github.com/Sanjeev-Karthick/transaction-ledger-api.git
@@ -34,7 +37,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The API waits for PostgreSQL, runs migrations and starts automatically.
+This starts PostgreSQL and the API. Migrations run automatically once the database is ready.
 
 | Resource              | Local URL                          |
 | --------------------- | ---------------------------------- |
@@ -51,8 +54,9 @@ docker compose down        # stop containers; keep database data
 
 ## Run Node locally
 
-Requires Node 24, npm and Docker for PostgreSQL. Run from the cloned repository.
-Skip copying `.env` if it already exists.
+For development, you can run Node directly and keep PostgreSQL in Docker. You'll need
+Node 24 and npm. From the cloned repository, run the following (skip the first command
+if you already have a `.env` file):
 
 ```sh
 cp .env.example .env
@@ -65,9 +69,11 @@ npm run db:migrate
 npm run dev
 ```
 
-`nvm` is optional if Node 24 is already installed. Use `npm start` without file watching,
-or `npm run debug` for debugging. If using your own PostgreSQL, update `DATABASE_URL` in `.env`.
-Never commit `.env`; the example credentials are for local development only.
+If Node 24 is already installed, skip the `nvm` commands. `npm run dev` restarts the server
+when files change; use `npm start` to run without watching, or `npm run debug` for debugging.
+To use an existing PostgreSQL instance instead, change `DATABASE_URL` in `.env`.
+
+The example credentials are only for local development. Keep `.env` out of Git.
 
 ## API overview
 
@@ -90,20 +96,24 @@ curl -X POST http://localhost:3000/api/v1/accounts \
   -d '{"name":"Alice"}'
 ```
 
-**Ledger rules:** accounts start at zero; amounts must be positive with at most two decimal
-places. Send money as strings such as `"100.50"`; monetary responses are strings.
-Debits cannot overdraw, references are unique per account, and transactions cannot be changed
-or deleted. Transfers commit both sides together or roll back entirely.
+Every account starts at zero. Amounts must be positive and have no more than two decimal
+places. Send money as strings, for example `"100.50"`; balances and amounts also come back
+as strings to preserve decimal precision.
+
+A debit is rejected if there isn't enough money. Each transaction needs a reference that's
+unique within its account, so retrying the same reference won't apply it twice. Once saved,
+a transaction can't be edited or deleted.
 
 ## Testing
 
-After `npm ci`, run the checks (Mocha, Sinon, Supertest, lint, formatting and OpenAPI validation):
+After `npm ci`, this runs the unit/API tests, lint, formatting and OpenAPI validation:
 
 ```sh
 npm run check
 ```
 
-Integration tests require a separate, disposable database. With the default local credentials:
+The tests use Mocha, Sinon and Supertest. To also run them against PostgreSQL, create a
+separate test database. With the default local credentials:
 
 ```sh
 docker compose up -d db
@@ -111,7 +121,9 @@ docker compose exec db createdb -U ledger ledger_test # once only
 npm run test:integration
 ```
 
-`TEST_DATABASE_URL` in `.env` must point to a database ending in `_test`.
+Create `ledger_test` only once. `TEST_DATABASE_URL` in `.env` must point to a separate
+database whose name ends in `_test`. Test runs leave records there, so don't use a database
+you need to keep clean.
 
 ### Postman
 
@@ -120,7 +132,7 @@ npm run test:integration
    public Render URL, without a trailing slash.
 3. Run the complete collection in order, with **one iteration**.
 
-Account IDs populate automatically. Each run creates permanent test records.
+The collection saves account IDs for you as it runs. Each run creates permanent test records.
 See [Postman instructions](postman/README.md) for details and terminal usage.
 
 ## Assumptions
@@ -141,19 +153,25 @@ See [Postman instructions](postman/README.md) for details and terminal usage.
 - Balance consistency is guaranteed for writes through this API. Direct SQL changes by a
   privileged database user are outside the API contract; restrict database access.
 
-## Requirements verification
+## What the tests cover
 
-Automated tests cover zero-balance account creation, exact credits/debits, rejected overdrafts,
-account-scoped duplicates, concurrent writes, missing accounts, validation, filtered/paginated
-latest-first history, immutable transactions, transfer rollback and balance reconciliation.
-Database constraints enforce valid types, positive amounts, nonnegative balances, account
-references and account-scoped uniqueness; a trigger blocks transaction updates/deletes/truncation.
+The tests check account creation, decimal arithmetic, overdrafts, duplicate references and
+concurrent writes. They also cover history filtering and pagination, validation errors,
+transaction immutability and transfers. Failure-injection tests check that a failed write
+rolls back the balance and both transfer records. A reconciliation check compares account
+balances with the sum of their transactions.
+
+PostgreSQL constraints provide another layer of protection for amounts, balances, account
+references and duplicate references. A database trigger rejects updates, deletes and
+truncation of transaction records.
 
 Run `npm run check` and `npm run test:integration` to verify these against your environment.
 
-## Before real-world use
+## Known limitations
 
-**Authentication and account ownership checks are not implemented. Use test data only.**
-Add access control, production secrets, backups and monitoring before handling real accounts.
-The API rate limit is 100 requests per minute per client IP; wait before retrying a `429` response.
-Keep applied migrations unchanged; add new migration files for schema changes.
+**There is no authentication or account ownership checking yet. Use test data only on the
+hosted service.** Access control, production secrets, backups and monitoring are needed before
+using this with real accounts.
+
+The API allows 100 requests per minute per client IP. If you get a `429`, wait before trying
+again. For schema changes, add a new migration rather than changing one that's already run.
