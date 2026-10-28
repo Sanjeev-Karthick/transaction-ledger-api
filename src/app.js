@@ -77,7 +77,19 @@ function createApp({ config, pool, logger, repository = createLedgerRepository(p
         },
       }),
       swaggerUi.serve,
-      swaggerUi.setup(openapi, { swaggerOptions: { validatorUrl: null } }),
+      swaggerUi.setup(openapi, {
+        customSiteTitle: 'Transaction Ledger API — API Explorer',
+        swaggerOptions: {
+          validatorUrl: null,
+          tryItOutEnabled: true,
+          supportedSubmitMethods: ['get', 'post'],
+          deepLinking: true,
+          displayRequestDuration: true,
+          filter: true,
+          docExpansion: 'list',
+          defaultModelsExpandDepth: 0,
+        },
+      }),
     );
   }
   app.use((_req, _res, next) => next(new HttpError(404, 'NOT_FOUND', 'Route not found')));
