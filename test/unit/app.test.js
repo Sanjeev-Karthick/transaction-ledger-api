@@ -122,6 +122,48 @@ describe('API', function () {
     assert.equal(denied.headers['access-control-allow-origin'], undefined);
   });
 
+  it('serves executable Swagger configuration with same-origin requests', async () => {
+    const app = createTestApp();
+    const spec = (await request(app).get('/openapi.json').expect(200)).body;
+    assert.equal(spec.servers[0].url, '/');
+    const init = await request(app).get('/docs/swagger-ui-init.js').expect(200);
+    assert.match(init.text, /"tryItOutEnabled": true/);
+    assert.match(init.text, /"supportedSubmitMethods":/);
+    const html = await request(app).get('/docs/').expect(200);
+    assert.match(html.headers['content-security-policy'], /script-src 'self' 'unsafe-inline'/);
+    assert.doesNotMatch(html.headers['content-security-policy'], /upgrade-insecure-requests/);
+    assert.doesNotMatch(html.headers['content-security-policy'], /connect-src 'none'/);
+    await request(createTestApp({ config: { ...config, DOCS_ENABLED: false } }))
+      .get('/docs/')
+      .expect(404);
+  });
+
+  it('documents executable request examples accepted by the API', async () => {
+    const {
+      accountSchema,
+      transactionSchema,
+      transferSchema,
+      validate,
+    } = require('../../src/ledger/validation.js');
+    const spec = (await request(createTestApp()).get('/openapi.json').expect(200)).body;
+    for (const [path, schema] of [
+      ['/api/v1/accounts', accountSchema],
+      ['/api/v1/accounts/{accountId}/transactions', transactionSchema],
+      ['/api/v1/transfers', transferSchema],
+    ]) {
+      const operation = spec.paths[path].post;
+      const examples = operation.requestBody.content['application/json'].examples;
+      assert.ok(Object.keys(examples).length > 0);
+      for (const example of Object.values(examples))
+        assert.doesNotThrow(() => validate(schema, example.value));
+      assert.ok(operation.responses['201'].content['application/json'].example);
+      assert.ok(operation.responses['413']);
+    }
+    const conflicts = spec.components.responses.Conflict.content['application/json'].examples;
+    assert.equal(conflicts.duplicate.value.error.code, 'DUPLICATE_TRANSACTION');
+    assert.equal(conflicts.insufficientFunds.value.error.code, 'INSUFFICIENT_BALANCE');
+  });
+
   it('configuration validates required values and boolean defaults', () => {
     assert.throws(() => loadConfig({}), /Invalid configuration/);
     assert.throws(() => loadConfig({ DATABASE_URL: 'not-a-url' }), /Invalid configuration/);
