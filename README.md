@@ -3,6 +3,26 @@
 A Node.js, Express and PostgreSQL API for accounts, credits, debits, transaction history
 and atomic transfers. JavaScript uses CommonJS (`require` / `module.exports`).
 
+## Submission links
+
+- [Source code](https://github.com/Sanjeev-Karthick/transaction-ledger-api)
+- [API documentation — OpenAPI](docs/openapi.json)
+- [Postman collection](postman/transaction-ledger.postman_collection.json)
+- [Postman environment](postman/transaction-ledger.postman_environment.json)
+- [Assumptions](#assumptions)
+
+### Hosted API
+
+| Resource                            | Link                                                                                      |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| API base URL (also used in Postman) | https://transaction-ledger-api-qce8.onrender.com                                          |
+| Health check                        | [Check API and database health](https://transaction-ledger-api-qce8.onrender.com/health)  |
+| Swagger UI                          | [Explore and try the API](https://transaction-ledger-api-qce8.onrender.com/docs/)         |
+| OpenAPI specification               | [Hosted API specification](https://transaction-ledger-api-qce8.onrender.com/openapi.json) |
+
+The API base URL is a prefix, not a homepage. Use the health check to check availability
+or Swagger UI to explore the endpoints.
+
 ## Quick start — Docker
 
 Requires Docker Desktop.
@@ -103,43 +123,33 @@ npm run test:integration
 Account IDs populate automatically. Each run creates permanent test records.
 See [Postman instructions](postman/README.md) for details and terminal usage.
 
-## Deploy on Render
+## Assumptions
 
-- [Render dashboard](https://dashboard.render.com/)
-- [Docker deployment guide](https://render.com/docs/docker)
-- [PostgreSQL setup guide](https://render.com/docs/postgresql-creating-connecting)
+- One currency with two decimal places; currency conversion is out of scope. Amounts
+  support up to 16 integer digits. Prefer strings to avoid client-side floating-point loss.
+- IDs are system-generated UUIDs; timestamps are system-generated and timezone-aware.
+  Clients cannot set IDs, timestamps or an initial balance. Unknown request fields are rejected.
+- Names and references are trimmed and required. References are case-sensitive and unique
+  within each account. A duplicate returns `409`, without changing the balance.
+- Description is optional and defaults to an empty string (maximum 500 characters).
+- Invalid data or malformed IDs return `400`; valid IDs for missing accounts return `404`.
+  Insufficient funds return `409`. Errors use an `error` object with a code, message and request ID.
+- History defaults to page 1 and limit 20 (maximum 100). Pages beyond the last return an
+  empty list. Results use `created_at DESC`, then ID as a deterministic tie-breaker.
+- Transfers require different source/destination accounts and an unused reference in both.
+  They create one debit and one credit with the same reference and commit atomically.
+- Balance consistency is guaranteed for writes through this API. Direct SQL changes by a
+  privileged database user are outside the API contract; restrict database access.
 
-1. Push the repository to GitHub and create a **Render PostgreSQL** database.
-2. Create a **Web Service** from this repository using the **Docker** runtime.
-3. Keep the service and database in the same region. Use the root `Dockerfile`.
-4. Set the environment variables below and the health check path to `/health`.
-5. **Leave Docker Command empty** — the Dockerfile runs migrations before starting the API.
-6. Deploy and check the service logs if startup fails.
+## Requirements verification
 
-| Variable       | Value                                       |
-| -------------- | ------------------------------------------- |
-| `DATABASE_URL` | Render PostgreSQL **Internal Database URL** |
-| `NODE_ENV`     | `production`                                |
-| `DOCS_ENABLED` | `true` to enable Swagger and OpenAPI        |
-| `LOG_LEVEL`    | `info`                                      |
+Automated tests cover zero-balance account creation, exact credits/debits, rejected overdrafts,
+account-scoped duplicates, concurrent writes, missing accounts, validation, filtered/paginated
+latest-first history, immutable transactions, transfer rollback and balance reconciliation.
+Database constraints enforce valid types, positive amounts, nonnegative balances, account
+references and account-scoped uniqueness; a trigger blocks transaction updates/deletes/truncation.
 
-Render supplies `PORT`. Local `POSTGRES_*` variables and `TEST_DATABASE_URL` are not needed.
-For external database connections, enable verified TLS with `DB_SSL=true`; see `.env.example`.
-Never publish database URLs or credentials.
-
-### Live service links
-
-Your public service URL is shown in the Render dashboard. **The URL below is an example;
-replace it with your deployed service URL.**
-
-| Resource                            | Example URL                                           |
-| ----------------------------------- | ----------------------------------------------------- |
-| API base URL (also used in Postman) | `https://your-service-name.onrender.com`              |
-| Health check                        | `https://your-service-name.onrender.com/health`       |
-| Swagger UI                          | `https://your-service-name.onrender.com/docs/`        |
-| OpenAPI specification               | `https://your-service-name.onrender.com/openapi.json` |
-
-The health check should return `{"status":"ok","database":"connected"}`.
+Run `npm run check` and `npm run test:integration` to verify these against your environment.
 
 ## Before real-world use
 
