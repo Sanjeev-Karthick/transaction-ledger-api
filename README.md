@@ -185,6 +185,9 @@ Add new migrations rather than modifying applied ones. Checksums detect modified
 
 ## Tests
 
+For Postman, import the collection and environment in `postman/`, set `base_url` to your local
+or Render API URL, and run the complete collection in order. See `postman/README.md` for details.
+
 Tests use **Mocha** (`describe` / `it` and lifecycle hooks), **Sinon** for stubs/spies,
 Supertest for HTTP requests, and Node's `assert` for assertions. Unit tests stub database calls;
 integration tests use real PostgreSQL, including forced write failures to verify rollback.
