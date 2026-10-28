@@ -1,18 +1,17 @@
-import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
-import pinoHttp from 'pino-http';
-import swaggerUi from 'swagger-ui-express';
-import { HttpError, errorHandler } from './errors.js';
-import { ledgerRoutes } from './ledger/routes.js';
-import { createLedgerRepository } from './ledger/repository.js';
+const { randomUUID } = require('node:crypto');
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
+const pinoHttp = require('pino-http');
+const swaggerUi = require('swagger-ui-express');
+const { HttpError, errorHandler } = require('./errors.js');
+const { ledgerRoutes } = require('./ledger/routes.js');
+const { createLedgerRepository } = require('./ledger/repository.js');
 
-const openapi = JSON.parse(readFileSync(new URL('../docs/openapi.json', import.meta.url), 'utf8'));
+const openapi = require('../docs/openapi.json');
 
-export function createApp({ config, pool, logger, repository = createLedgerRepository(pool) }) {
+function createApp({ config, pool, logger, repository = createLedgerRepository(pool) }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(
@@ -85,3 +84,5 @@ export function createApp({ config, pool, logger, repository = createLedgerRepos
   app.use(errorHandler);
   return app;
 }
+
+module.exports = { createApp };

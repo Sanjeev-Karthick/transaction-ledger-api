@@ -3,6 +3,9 @@
 JavaScript, Express, PostgreSQL, Lodash and Swagger. Accounts start at zero. Credits and debits
 are immutable, references are unique within each account, and transfers are atomic.
 
+All JavaScript files use **CommonJS**: `require()` at the top and `module.exports` at the bottom.
+There is no ES-module configuration, transpiler, or build step.
+
 ## Run in Docker
 
 ```sh
@@ -174,11 +177,17 @@ migrations/              versioned SQL files
 ```
 
 Read flow: **route → validate → repository → response**. No generic controller/service layers.
+Use a breakpoint in a named route handler, then step into the repository to follow the SQL.
+Credit and debit balance updates use separate, explicit SQL statements for easy debugging.
 Migration 002 uses new account tables and leaves any earlier experimental `transactions` table
 and migration history alone. No existing data is dropped or converted into the new ledger.
 Add new migrations rather than modifying applied ones. Checksums detect modified applied files.
 
 ## Tests
+
+Tests use **Mocha** (`describe` / `it` and lifecycle hooks), **Sinon** for stubs/spies,
+Supertest for HTTP requests, and Node's `assert` for assertions. Unit tests stub database calls;
+integration tests use real PostgreSQL, including forced write failures to verify rollback.
 
 ```sh
 npm run check

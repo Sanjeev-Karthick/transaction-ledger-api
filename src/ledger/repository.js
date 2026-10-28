@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
-import _ from 'lodash';
-import { HttpError } from '../errors.js';
+const { randomUUID } = require('node:crypto');
+const _ = require('lodash');
+const { HttpError } = require('../errors.js');
 
 // All statements inside a transaction use the same connection.
 async function inTransaction(pool, work, begin = 'BEGIN') {
@@ -19,10 +19,9 @@ async function inTransaction(pool, work, begin = 'BEGIN') {
 }
 
 async function requireAccount(client, accountId, lock = false) {
-  const result = await client.query(
-    `SELECT * FROM accounts WHERE id = $1 ${lock ? 'FOR UPDATE' : ''}`,
-    [accountId],
-  );
+  let sql = 'SELECT * FROM accounts WHERE id = $1';
+  if (lock) sql += ' FOR UPDATE';
+  const result = await client.query(sql, [accountId]);
   if (!result.rows[0]) {
     throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Account not found');
   }
@@ -57,20 +56,20 @@ async function insertTransaction(client, accountId, input) {
 }
 
 async function updateBalance(client, accountId, type, amount) {
-  // PostgreSQL performs exact decimal arithmetic, and the predicate prevents overdrafts.
-  const result = await client.query(
-    `UPDATE accounts SET balance = balance + CASE WHEN $2 = 'credit' THEN $3::numeric ELSE -$3::numeric END
-     WHERE id = $1 AND ($2 = 'credit' OR balance >= $3::numeric)
-     RETURNING balance`,
-    [accountId, type, amount],
-  );
+  // Keep credit/debit SQL explicit. PostgreSQL handles exact decimal arithmetic.
+  let sql = 'UPDATE accounts SET balance = balance + $2::numeric WHERE id = $1 RETURNING balance';
+  if (type === 'debit') {
+    sql = `UPDATE accounts SET balance = balance - $2::numeric
+           WHERE id = $1 AND balance >= $2::numeric RETURNING balance`;
+  }
+  const result = await client.query(sql, [accountId, amount]);
   if (!result.rows.length) {
     throw new HttpError(409, 'INSUFFICIENT_BALANCE', 'Account has insufficient balance');
   }
   return result.rows[0].balance;
 }
 
-export function createLedgerRepository(pool) {
+function createLedgerRepository(pool) {
   return {
     async createAccount(input) {
       const result = await pool.query(
@@ -132,8 +131,12 @@ export function createLedgerRepository(pool) {
       return inTransaction(pool, async (client) => {
         // Always lock accounts in the same order to avoid opposite-direction transfer deadlocks.
         const ids = _.sortBy([input.source_account_id, input.destination_account_id]);
-        for (const id of ids) await requireAccount(client, id, true);
-        for (const id of ids) await checkReference(client, id, input.reference_id);
+        for (const id of ids) {
+          await requireAccount(client, id, true);
+        }
+        for (const id of ids) {
+          await checkReference(client, id, input.reference_id);
+        }
 
         const sourceBalance = await updateBalance(
           client,
@@ -165,3 +168,5 @@ export function createLedgerRepository(pool) {
     },
   };
 }
+
+module.exports = { createLedgerRepository };

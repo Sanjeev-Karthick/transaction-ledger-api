@@ -1,4 +1,4 @@
-import { z } from 'zod';
+const { z } = require('zod');
 
 const boolean = z.enum(['true', 'false']).transform((value) => value === 'true');
 const schema = z.object({
@@ -25,7 +25,7 @@ const schema = z.object({
   CORS_ORIGINS: z.string().default(''),
 });
 
-export function loadConfig(env = process.env) {
+function loadConfig(env = process.env) {
   const result = schema.safeParse(env);
   if (!result.success) {
     // Never print values: DATABASE_URL can contain credentials.
@@ -54,3 +54,5 @@ export function loadConfig(env = process.env) {
     corsOrigins,
   };
 }
+
+module.exports = { loadConfig };

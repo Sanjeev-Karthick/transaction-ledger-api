@@ -1,6 +1,6 @@
-import _ from 'lodash';
-import { z } from 'zod';
-import { HttpError } from '../errors.js';
+const _ = require('lodash');
+const { z } = require('zod');
+const { HttpError } = require('../errors.js');
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 
@@ -25,14 +25,14 @@ const transactionFields = {
   reference_id: text(100),
 };
 
-export const accountSchema = z.object({ name: text(100) }).strict();
-export const transactionSchema = z
+const accountSchema = z.object({ name: text(100) }).strict();
+const transactionSchema = z
   .object({
     type: z.enum(['credit', 'debit']),
     ...transactionFields,
   })
   .strict();
-export const transferSchema = z
+const transferSchema = z
   .object({
     source_account_id: uuid,
     destination_account_id: uuid,
@@ -43,7 +43,7 @@ export const transferSchema = z
     message: 'Source and destination accounts must be different',
     path: ['destination_account_id'],
   });
-export const accountIdSchema = z.object({ accountId: uuid }).strict();
+const accountIdSchema = z.object({ accountId: uuid }).strict();
 const positiveInteger = (max, fallback) =>
   z
     .string()
@@ -51,7 +51,7 @@ const positiveInteger = (max, fallback) =>
     .transform(Number)
     .pipe(z.number().int().min(1).max(max))
     .default(fallback);
-export const historySchema = z
+const historySchema = z
   .object({
     type: z.enum(['credit', 'debit']).optional(),
     page: positiveInteger(1000000, 1),
@@ -59,7 +59,7 @@ export const historySchema = z
   })
   .strict();
 
-export function validate(schema, value) {
+function validate(schema, value) {
   const result = schema.safeParse(value);
   if (!result.success) {
     const details = _.map(result.error.issues, (issue) => ({
@@ -70,3 +70,12 @@ export function validate(schema, value) {
   }
   return result.data;
 }
+
+module.exports = {
+  accountSchema,
+  transactionSchema,
+  transferSchema,
+  accountIdSchema,
+  historySchema,
+  validate,
+};

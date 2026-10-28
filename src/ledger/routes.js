@@ -1,15 +1,15 @@
-import { Router } from 'express';
-import { HttpError } from '../errors.js';
-import {
+const { Router } = require('express');
+const { HttpError } = require('../errors.js');
+const {
   accountSchema,
   transactionSchema,
   transferSchema,
   accountIdSchema,
   historySchema,
   validate,
-} from './validation.js';
+} = require('./validation.js');
 
-export function ledgerRoutes(repository) {
+function ledgerRoutes(repository) {
   const router = Router();
 
   router.use((req, _res, next) => {
@@ -52,3 +52,5 @@ export function ledgerRoutes(repository) {
 
   return router;
 }
+
+module.exports = { ledgerRoutes };

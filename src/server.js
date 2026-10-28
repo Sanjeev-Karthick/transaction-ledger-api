@@ -1,7 +1,7 @@
-import { loadConfig } from './config.js';
-import { createLogger } from './logger.js';
-import { createPool } from './db/pool.js';
-import { createApp } from './app.js';
+const { loadConfig } = require('./config.js');
+const { createLogger } = require('./logger.js');
+const { createPool } = require('./db/pool.js');
+const { createApp } = require('./app.js');
 
 const config = loadConfig();
 const logger = createLogger(config);
@@ -51,5 +51,5 @@ try {
   });
 } catch (err) {
   logger.fatal({ err }, 'API startup failed');
-  await shutdown('startup failure', 1);
+  shutdown('startup failure', 1);
 }

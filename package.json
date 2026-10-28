@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "JavaScript REST API starter with PostgreSQL, OpenAPI and Docker",
-  "type": "module",
+  "type": "commonjs",
   "engines": {
     "node": ">=22.21.0"
   },
@@ -12,8 +12,8 @@
     "debug": "node --env-file-if-exists=.env --inspect src/server.js",
     "start": "node --env-file-if-exists=.env src/server.js",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.js",
-    "test": "node --test test/unit/*.test.js",
-    "test:integration": "node --env-file-if-exists=.env --test test/integration/*.test.js",
+    "test": "mocha \"test/unit/**/*.test.js\"",
+    "test:integration": "node --env-file-if-exists=.env node_modules/mocha/bin/mocha.js --timeout 15000 \"test/integration/**/*.test.js\"",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -37,7 +37,9 @@
     "@eslint/js": "9.39.5",
     "eslint": "9.39.5",
     "globals": "17.13.0",
+    "mocha": "12.0.3",
     "prettier": "3.9.10",
+    "sinon": "22.1.0",
     "supertest": "7.3.1"
   }
 }

@@ -1,6 +1,6 @@
-import pino from 'pino';
+const pino = require('pino');
 
-export function createLogger(config) {
+function createLogger(config) {
   return pino({
     level: config.LOG_LEVEL,
     base: { service: 'transaction-ledger-api' },
@@ -10,3 +10,5 @@ export function createLogger(config) {
     },
   });
 }
+
+module.exports = { createLogger };

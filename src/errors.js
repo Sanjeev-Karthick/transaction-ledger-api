@@ -1,4 +1,4 @@
-export class HttpError extends Error {
+class HttpError extends Error {
   constructor(status, code, message, details) {
     super(message);
     this.status = status;
@@ -7,7 +7,7 @@ export class HttpError extends Error {
   }
 }
 
-export function errorHandler(err, req, res, _next) {
+function errorHandler(err, req, res, _next) {
   if (res.headersSent) return _next(err);
   let error = err;
   if (err.type === 'entity.parse.failed') {
@@ -40,3 +40,5 @@ export function errorHandler(err, req, res, _next) {
     },
   });
 }
+
+module.exports = { HttpError, errorHandler };

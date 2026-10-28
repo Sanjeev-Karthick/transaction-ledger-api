@@ -1,7 +1,8 @@
-import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+const { createHash } = require('node:crypto');
+const { readdir, readFile } = require('node:fs/promises');
+const path = require('node:path');
 
-export async function migrate(pool) {
+async function migrate(pool) {
   const client = await pool.connect();
   try {
     // One atomic migration batch; concurrent startup processes cannot race.
@@ -10,18 +11,19 @@ export async function migrate(pool) {
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
     )`);
-    const directory = new URL('../../migrations/', import.meta.url);
+    const directory = path.join(__dirname, '../../migrations');
     const files = (await readdir(directory)).filter((name) => /^\d+_.*\.sql$/.test(name)).sort();
     for (const name of files) {
-      const sql = await readFile(new URL(name, directory), 'utf8');
+      const sql = await readFile(path.join(directory, name), 'utf8');
       const checksum = createHash('sha256').update(sql).digest('hex');
       const previous = await client.query(
         'SELECT checksum FROM schema_migrations WHERE name = $1',
         [name],
       );
       if (previous.rows.length) {
-        if (previous.rows[0].checksum !== checksum)
+        if (previous.rows[0].checksum !== checksum) {
           throw new Error(`Applied migration changed: ${name}`);
+        }
         continue;
       }
       await client.query(sql);
@@ -38,3 +40,5 @@ export async function migrate(pool) {
     client.release();
   }
 }
+
+module.exports = { migrate };

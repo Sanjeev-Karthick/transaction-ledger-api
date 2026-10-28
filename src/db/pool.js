@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs';
-import pg from 'pg';
+const { readFileSync } = require('node:fs');
+const pg = require('pg');
 
-export function createPool(config, logger) {
+function createPool(config, logger) {
   let ssl = false;
   if (config.DB_SSL) {
     ssl = { rejectUnauthorized: true };
@@ -21,3 +21,5 @@ export function createPool(config, logger) {
   pool.on('error', (err) => logger.error({ err }, 'Unexpected idle database connection error'));
   return pool;
 }
+
+module.exports = { createPool };
