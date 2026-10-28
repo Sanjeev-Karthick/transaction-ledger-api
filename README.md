@@ -1,216 +1,177 @@
 # Transaction Ledger API
 
-JavaScript, Express, PostgreSQL, Lodash and Swagger. Accounts start at zero. Credits and debits
-are immutable, references are unique within each account, and transfers are atomic.
+A small ledger API built with Node.js, Express and PostgreSQL. You can create an account,
+credit or debit it, check its balance and browse its transaction history. Transfers between
+accounts are supported too: either both sides succeed, or neither does.
 
-All JavaScript files use **CommonJS**: `require()` at the top and `module.exports` at the bottom.
-There is no ES-module configuration, transpiler, or build step.
+The code uses CommonJS (`require` / `module.exports`).
 
-## Run in Docker
+## Project links
+
+- [Source code](https://github.com/Sanjeev-Karthick/transaction-ledger-api)
+- [API documentation — OpenAPI](docs/openapi.json)
+- [Postman collection](postman/transaction-ledger.postman_collection.json)
+- [Postman environment](postman/transaction-ledger.postman_environment.json)
+- [Assumptions](#assumptions)
+
+### Hosted API
+
+| Resource                            | Link                                                                                      |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| API base URL (also used in Postman) | https://transaction-ledger-api-qce8.onrender.com                                          |
+| Health check                        | [Check API and database health](https://transaction-ledger-api-qce8.onrender.com/health)  |
+| Swagger UI                          | [Explore and try the API](https://transaction-ledger-api-qce8.onrender.com/docs/)         |
+| OpenAPI specification               | [Hosted API specification](https://transaction-ledger-api-qce8.onrender.com/openapi.json) |
+
+Start with Swagger if you want to try it out in your browser. The base URL doesn't have a
+homepage; the health endpoint checks that both the API and database are available.
+
+## Run with Docker
+
+Docker Desktop is all you need for this option.
 
 ```sh
-cp .env.example .env # first time only
-docker compose up --build -d --remove-orphans
+git clone https://github.com/Sanjeev-Karthick/transaction-ledger-api.git
+cd transaction-ledger-api
+cp .env.example .env
+docker compose up --build -d
 ```
 
-- API: `http://localhost:3000`
-- Swagger: `http://localhost:3000/docs/`
-- OpenAPI: `http://localhost:3000/openapi.json`
-- Health: `http://localhost:3000/health`
+This starts PostgreSQL and the API. Migrations run automatically once the database is ready.
 
-Two containers: API and PostgreSQL. The API waits for PostgreSQL health, runs migrations and starts.
-Database data stays in a named volume. `docker compose down` preserves it; **`down -v` deletes it**.
-For multiple API replicas, run migrations once as a deployment job rather than at each startup.
+| Resource              | Local URL                          |
+| --------------------- | ---------------------------------- |
+| Health check          | http://localhost:3000/health       |
+| Swagger UI            | http://localhost:3000/docs/        |
+| OpenAPI specification | http://localhost:3000/openapi.json |
+
+```sh
+docker compose logs -f api # view logs
+docker compose down        # stop containers; keep database data
+```
+
+**Warning:** `docker compose down -v` deletes the database volume.
 
 ## Run Node locally
 
-Requires Node 24, npm and Docker Desktop (or a locally installed PostgreSQL server).
+For development, you can run Node directly and keep PostgreSQL in Docker. You'll need
+Node 24 and npm. From the cloned repository, run the following (skip the first command
+if you already have a `.env` file):
 
 ```sh
-cp .env.example .env # first time only
+cp .env.example .env
 nvm install
 nvm use
 npm ci
-docker compose stop api # if port 3000 is occupied
+docker compose stop api # free port 3000 if the Docker API is running
 docker compose up -d db
 npm run db:migrate
 npm run dev
 ```
 
-`npm start` runs without file watching. Use `npm run debug` or VS Code **Debug API** for breakpoints.
-Your older Node 22.0.0 cannot run the optional env-file loader; use Node 24 or Docker.
+If Node 24 is already installed, skip the `nvm` commands. `npm run dev` restarts the server
+when files change; use `npm start` to run without watching, or `npm run debug` for debugging.
+To use an existing PostgreSQL instance instead, change `DATABASE_URL` in `.env`.
 
-## Endpoints
+The example credentials are only for local development. Keep `.env` out of Git.
 
-All ledger endpoints start with `/api/v1`. POST requests require `Content-Type: application/json`.
+## API overview
 
-| Method | Path                                | Purpose                                      |
-| ------ | ----------------------------------- | -------------------------------------------- |
-| POST   | `/accounts`                         | Create account; only `name` accepted         |
-| GET    | `/accounts/:accountId/balance`      | Current account balance                      |
-| POST   | `/accounts/:accountId/transactions` | Add credit/debit                             |
-| GET    | `/accounts/:accountId/transactions` | Filtered, paginated history                  |
-| POST   | `/transfers`                        | Atomic debit and credit between two accounts |
+All paths below start with `/api/v1`. POST requests require `Content-Type: application/json`.
+See Swagger for request bodies, filters and response examples.
 
-`GET /health` checks PostgreSQL with `SELECT 1`; returns 503 if unavailable.
-`GET /api/v1/starter` remains available as a simple starter response.
+| Method | Path                                | Purpose                     |
+| ------ | ----------------------------------- | --------------------------- |
+| POST   | `/accounts`                         | Create an account           |
+| GET    | `/accounts/:accountId/balance`      | Get balance                 |
+| POST   | `/accounts/:accountId/transactions` | Credit or debit             |
+| GET    | `/accounts/:accountId/transactions` | Filtered, paginated history |
+| POST   | `/transfers`                        | Transfer between accounts   |
 
-### Create account
+Create your first account:
 
 ```sh
 curl -X POST http://localhost:3000/api/v1/accounts \
-  -H 'Content-Type: application/json' -d '{"name":"Alice"}'
-```
-
-```json
-{
-  "data": {
-    "id": "ecb4dc3b-c6e0-46bd-baa3-b9be5cb68562",
-    "name": "Alice",
-    "balance": "0.00",
-    "created_at": "2026-10-27T12:00:00.000Z"
-  }
-}
-```
-
-IDs are server-generated UUIDs, timestamps come from PostgreSQL, and the database default sets
-the balance to zero. Client-supplied balance, ID, timestamps and unknown fields are rejected.
-
-### Add transaction
-
-Use the actual account ID returned above:
-
-```sh
-ACCOUNT_ID=ecb4dc3b-c6e0-46bd-baa3-b9be5cb68562
-curl -X POST "http://localhost:3000/api/v1/accounts/$ACCOUNT_ID/transactions" \
   -H 'Content-Type: application/json' \
-  -d '{"type":"credit","amount":"100.50","description":"Deposit","reference_id":"deposit-001"}'
-
-curl "http://localhost:3000/api/v1/accounts/$ACCOUNT_ID/balance"
-curl "http://localhost:3000/api/v1/accounts/$ACCOUNT_ID/transactions?type=credit&page=1&limit=20"
+  -d '{"name":"Alice"}'
 ```
 
-Transactions return `{ "data": { "transaction": { ... }, "balance": "100.50" } }`.
-Description is optional and defaults to an empty string. Names, descriptions and references are
-trimmed. Reference IDs are case-sensitive and unique **per account**. Reuse returns 409 with the
-existing transaction ID; it never replays a success or changes money, even if the new payload differs.
+Every account starts at zero. Amounts must be positive and have no more than two decimal
+places. Send money as strings, for example `"100.50"`; balances and amounts also come back
+as strings to preserve decimal precision.
 
-History returns:
+A debit is rejected if there isn't enough money. Each transaction needs a reference that's
+unique within its account, so retrying the same reference won't apply it twice. Once saved,
+a transaction can't be edited or deleted.
 
-```json
-{
-  "data": [],
-  "pagination": { "page": 1, "limit": 20, "total_records": 0, "total_pages": 0 }
-}
-```
+## Testing
 
-Omit `type` for both types. Defaults: page 1, limit 20; maximum limit 100, maximum page 1000000.
-Results sort by `created_at DESC, id DESC`. Out-of-range pages return an empty array.
-The count and rows share one database snapshot. Separate page requests can shift under concurrent
-inserts; use cursor pagination later if the workload needs stable traversal.
-
-### Transfer (bonus)
-
-```sh
-curl -X POST http://localhost:3000/api/v1/transfers \
-  -H 'Content-Type: application/json' \
-  -d '{"source_account_id":"ecb4dc3b-c6e0-46bd-baa3-b9be5cb68562","destination_account_id":"0aafc17b-8507-4681-9e1d-d496864c4ca3","amount":"30.00","reference_id":"transfer-001","description":"Transfer"}'
-```
-
-Both accounts must exist and differ. The reference must be unused on **both** accounts, including
-references from ordinary transactions. Success returns debit/credit records and both new balances.
-Both entries share the provided reference; neither is persisted if anything fails.
-
-## Money and consistency
-
-- This version assumes one shared currency with **two decimal places**. No currency conversion.
-- Amounts accept strings or JSON numbers, positive and up to `9999999999999999.99`.
-  Strings are recommended: numbers may lose precision before the server receives them.
-- More than two decimal places is rejected, not silently rounded. Money responses are strings.
-- PostgreSQL `numeric` handles all arithmetic; no JS floating-point balance calculations.
-- Account balances use `numeric(24,2)`; exceeding its range returns 422 and rolls back the write.
-- Each write uses BEGIN/COMMIT/ROLLBACK on one database connection. Account row locks serialize
-  writes before checking duplicates and funds. Transfers lock both accounts in UUID order to avoid
-  opposite-direction deadlocks. No partial balance/record changes are visible.
-- Database constraints enforce IDs, account references, positive amounts, nonnegative balances,
-  valid types, and account-scoped reference uniqueness. Triggers block transaction changes/deletion.
-- No API can edit balances or edit/delete transactions. All application writes go through the
-  transaction functions. A privileged database administrator can bypass controls or change balances;
-  do not grant clients direct SQL access. This is not cryptographic tamper-proofing.
-
-## Errors
-
-```json
-{
-  "error": {
-    "code": "INSUFFICIENT_BALANCE",
-    "message": "Account has insufficient balance",
-    "requestId": "b415e1dc-e247-447f-bce9-f0a9ce8d181f"
-  }
-}
-```
-
-| Status    | Cases                                                          |
-| --------- | -------------------------------------------------------------- |
-| 400       | Invalid body, UUID, type, amount, pagination or missing fields |
-| 404       | Account/route not found                                        |
-| 409       | Duplicate reference or insufficient balance                    |
-| 413 / 415 | Body too large / unsupported media type                        |
-| 422       | Money exceeds database range                                   |
-| 429       | API rate limit exceeded                                        |
-| 500       | Unexpected error; database write rolled back                   |
-
-Validation errors include a `details` array of field errors. Duplicate errors can include an
-object with `account_id` and `transaction_id`. Internal errors are logged, not exposed to clients.
-
-## Simple structure
-
-```text
-src/server.js             start/stop server
-src/app.js                middleware, health, Swagger, routes
-src/ledger/routes.js      HTTP handlers
-src/ledger/validation.js  Zod validation; Lodash maps field errors
-src/ledger/repository.js  SQL and atomic operations; Lodash orders account locks
-src/db/pool.js            database connections
-src/db/migrate.js         transactional SQL migration runner
-migrations/              versioned SQL files
-```
-
-Read flow: **route → validate → repository → response**. No generic controller/service layers.
-Use a breakpoint in a named route handler, then step into the repository to follow the SQL.
-Credit and debit balance updates use separate, explicit SQL statements for easy debugging.
-Migration 002 uses new account tables and leaves any earlier experimental `transactions` table
-and migration history alone. No existing data is dropped or converted into the new ledger.
-Add new migrations rather than modifying applied ones. Checksums detect modified applied files.
-
-## Tests
-
-Tests use **Mocha** (`describe` / `it` and lifecycle hooks), **Sinon** for stubs/spies,
-Supertest for HTTP requests, and Node's `assert` for assertions. Unit tests stub database calls;
-integration tests use real PostgreSQL, including forced write failures to verify rollback.
+After `npm ci`, this runs the unit/API tests, lint, formatting and OpenAPI validation:
 
 ```sh
 npm run check
+```
+
+The tests use Mocha, Sinon and Supertest. To also run them against PostgreSQL, create a
+separate test database. With the default local credentials:
+
+```sh
 docker compose up -d db
-docker compose exec db createdb -U ledger ledger_test # once, default local credentials
+docker compose exec db createdb -U ledger ledger_test # once only
 npm run test:integration
 ```
 
-Integration tests require `TEST_DATABASE_URL` with a database name ending in `_test`. They run
-migrations and leave append-only test records in that disposable database. Tests cover precision,
-duplicate races, concurrent debits, history, validation, immutability, transfers, injected failures
-and a query verifying that every account balance equals its ledger sum. CI runs the same checks.
+Create `ledger_test` only once. `TEST_DATABASE_URL` in `.env` must point to a separate
+database whose name ends in `_test`. Test runs leave records there, so don't use a database
+you need to keep clean.
 
-## Settings and deployment
+### Postman
 
-See `.env.example`. `DATABASE_URL` is required. Compose uses hostname `db`; local Node uses localhost.
-Changing database credentials in `.env` does not update an already initialized PostgreSQL volume.
-If you change Compose ports or credentials, update local connection URLs too.
+1. Import both JSON files from `postman/`.
+2. Select the imported environment and set `base_url` to `http://localhost:3000` or your
+   public Render URL, without a trailing slash.
+3. Run the complete collection in order, with **one iteration**.
 
-Before public deployment add authentication and account ownership/authorization, HTTPS, production
-secrets, backup/restore procedures and monitoring. CORS is not access control. Disable docs with
-`DOCS_ENABLED=false` where appropriate. Use verified database TLS (`DB_SSL=true`, optional
-`DB_SSL_CA_FILE`) for hosted PostgreSQL; do not override it with SSL URL parameters.
-The built-in rate limit is per-process, 100 API requests/minute/client IP; use a gateway/shared limit
-and configure trusted proxies when scaling. Use least-privilege DB credentials; the local Compose
-user is not an appropriate production runtime role.
+The collection saves account IDs for you as it runs. Each run creates permanent test records.
+See [Postman instructions](postman/README.md) for details and terminal usage.
+
+## Assumptions
+
+- One currency with two decimal places; currency conversion is out of scope. Amounts
+  support up to 16 integer digits. Prefer strings to avoid client-side floating-point loss.
+- IDs are system-generated UUIDs; timestamps are system-generated and timezone-aware.
+  Clients cannot set IDs, timestamps or an initial balance. Unknown request fields are rejected.
+- Names and references are trimmed and required. References are case-sensitive and unique
+  within each account. A duplicate returns `409`, without changing the balance.
+- Description is optional and defaults to an empty string (maximum 500 characters).
+- Invalid data or malformed IDs return `400`; valid IDs for missing accounts return `404`.
+  Insufficient funds return `409`. Errors use an `error` object with a code, message and request ID.
+- History defaults to page 1 and limit 20 (maximum 100). Pages beyond the last return an
+  empty list. Results use `created_at DESC`, then ID as a deterministic tie-breaker.
+- Transfers require different source/destination accounts and an unused reference in both.
+  They create one debit and one credit with the same reference and commit atomically.
+- Balance consistency is guaranteed for writes through this API. Direct SQL changes by a
+  privileged database user are outside the API contract; restrict database access.
+
+## What the tests cover
+
+The tests check account creation, decimal arithmetic, overdrafts, duplicate references and
+concurrent writes. They also cover history filtering and pagination, validation errors,
+transaction immutability and transfers. Failure-injection tests check that a failed write
+rolls back the balance and both transfer records. A reconciliation check compares account
+balances with the sum of their transactions.
+
+PostgreSQL constraints provide another layer of protection for amounts, balances, account
+references and duplicate references. A database trigger rejects updates, deletes and
+truncation of transaction records.
+
+Run `npm run check` and `npm run test:integration` to verify these against your environment.
+
+## Known limitations
+
+**There is no authentication or account ownership checking yet. Use test data only on the
+hosted service.** Access control, production secrets, backups and monitoring are needed before
+using this with real accounts.
+
+The API allows 100 requests per minute per client IP. If you get a `429`, wait before trying
+again. For schema changes, add a new migration rather than changing one that's already run.

@@ -1,0 +1,1375 @@
+{
+  "info": {
+    "name": "Transaction Ledger API",
+    "_postman_id": "be13aa7a-43e2-4f27-837c-bcdf154252e3",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Run ALL folders in order, one iteration at a time. Creates two fresh accounts per run and leaves permanent ledger records. Use only a test deployment/database. Set base_url to localhost or your Render service URL without a trailing slash. Expected final balances: A=50.00, B=70.00. Run within the 100 requests/minute limit; repeated runs may require waiting one minute."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Health and fresh accounts",
+      "item": [
+        {
+          "name": "Health and database connectivity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_id', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.collectionVariables.set('missing_account_id', pm.variables.replaceIn('{{$guid}}'));",
+                  "['account_a_id', 'account_b_id', 'transaction_id'].forEach(function (key) { pm.collectionVariables.unset(key); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('API is healthy', function () { pm.expect(response.status).to.eql(\"ok\"); });",
+                  "pm.test('Database connected', function () { pm.expect(response.database).to.eql(\"connected\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Starter API",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/starter",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Starter message', function () { pm.expect(response.message).to.eql(\"API is ready\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create account A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 201. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman A {{run_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Initial balance is zero', function () { pm.expect(response.data.balance).to.eql(\"0.00\"); });",
+                  "pm.test('Generated account fields', function () { pm.expect(response.data.id).to.be.a('string').and.not.empty; pm.expect(Number.isNaN(Date.parse(response.data.created_at))).to.eql(false); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('account_a_id', response.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create account B",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 201. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman B {{run_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Initial balance is zero', function () { pm.expect(response.data.balance).to.eql(\"0.00\"); });",
+                  "pm.test('Generated account fields', function () { pm.expect(response.data.id).to.be.a('string').and.not.empty; pm.expect(Number.isNaN(Date.parse(response.data.created_at))).to.eql(false); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('account_b_id', response.data.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Credits, debits and duplicates",
+      "item": [
+        {
+          "name": "Credit A with 100",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 201. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"100.00\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "const response = pm.response.json();",
+                  "pm.test('A balance is 100', function () { pm.expect(response.data.balance).to.eql(\"100.00\"); });",
+                  "pm.test('Exact amount', function () { pm.expect(response.data.transaction.amount).to.eql(\"100.00\"); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('transaction_id', response.data.transaction.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject duplicate credit on A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 409. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"100.00\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: DUPLICATE_TRANSACTION', function () { pm.expect(response.error.code).to.eql('DUPLICATE_TRANSACTION'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm duplicate did not change balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/balance",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Still 100', function () { pm.expect(response.data.balance).to.eql(\"100.00\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same reference allowed on B",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_b_id}}/transactions",
+            "description": "Expected HTTP 201. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"50.00\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "const response = pm.response.json();",
+                  "pm.test('B balance is 50', function () { pm.expect(response.data.balance).to.eql(\"50.00\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Debit A by 30",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 201. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"debit\",\n  \"amount\": \"30.00\",\n  \"reference_id\": \"{{run_id}}-debit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "const response = pm.response.json();",
+                  "pm.test('A balance is 70', function () { pm.expect(response.data.balance).to.eql(\"70.00\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject overdraft on A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 409. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"debit\",\n  \"amount\": \"1000.00\",\n  \"reference_id\": \"{{run_id}}-overdraft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: INSUFFICIENT_BALANCE', function () { pm.expect(response.error.code).to.eql('INSUFFICIENT_BALANCE'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm overdraft did not change balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/balance",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Still 70', function () { pm.expect(response.data.balance).to.eql(\"70.00\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - History and pagination",
+      "item": [
+        {
+          "name": "History page 1, one record",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?page=1&limit=1",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Pagination metadata', function () { pm.expect(response.pagination).to.eql({\"page\": 1, \"limit\": 1, \"total_records\": 2, \"total_pages\": 2}); });",
+                  "pm.test('One record', function () { pm.expect(response.data.length).to.eql(1); });",
+                  "pm.test('Latest record first', function () { pm.expect(response.data[0].type).to.eql(\"debit\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History page 2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?page=2&limit=1",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Older credit on second page', function () { pm.expect(response.data[0].type).to.eql(\"credit\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter credit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?type=credit",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('One filtered record', function () { pm.expect(response.pagination.total_records).to.eql(1); });",
+                  "pm.test('Correct type', function () { pm.expect(response.data[0].type).to.eql(\"credit\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter debit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?type=debit",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('One filtered record', function () { pm.expect(response.pagination.total_records).to.eql(1); });",
+                  "pm.test('Correct type', function () { pm.expect(response.data[0].type).to.eql(\"debit\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Page beyond the end",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?page=99&limit=1",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Empty page', function () { pm.expect(response.data).to.eql([]); });",
+                  "pm.test('Count is unchanged', function () { pm.expect(response.pagination.total_records).to.eql(2); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Atomic transfers",
+      "item": [
+        {
+          "name": "Transfer 20 from A to B",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers",
+            "description": "Expected HTTP 201. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_account_id\": \"{{account_a_id}}\",\n  \"destination_account_id\": \"{{account_b_id}}\",\n  \"amount\": \"20.00\",\n  \"description\": \"Postman transfer\",\n  \"reference_id\": \"{{run_id}}-transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "const response = pm.response.json();",
+                  "pm.test('A balance is 50', function () { pm.expect(response.data.source_balance).to.eql(\"50.00\"); });",
+                  "pm.test('B balance is 70', function () { pm.expect(response.data.destination_balance).to.eql(\"70.00\"); });",
+                  "pm.test('Source debit', function () { pm.expect(response.data.debit.type).to.eql(\"debit\"); });",
+                  "pm.test('Destination credit', function () { pm.expect(response.data.credit.type).to.eql(\"credit\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject duplicate transfer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers",
+            "description": "Expected HTTP 409. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_account_id\": \"{{account_a_id}}\",\n  \"destination_account_id\": \"{{account_b_id}}\",\n  \"amount\": \"20.00\",\n  \"description\": \"Postman transfer\",\n  \"reference_id\": \"{{run_id}}-transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: DUPLICATE_TRANSACTION', function () { pm.expect(response.error.code).to.eql('DUPLICATE_TRANSACTION'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject transfer with insufficient funds",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers",
+            "description": "Expected HTTP 409. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_account_id\": \"{{account_a_id}}\",\n  \"destination_account_id\": \"{{account_b_id}}\",\n  \"amount\": \"999.00\",\n  \"description\": \"Postman transfer\",\n  \"reference_id\": \"{{run_id}}-transfer-overdraft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: INSUFFICIENT_BALANCE', function () { pm.expect(response.error.code).to.eql('INSUFFICIENT_BALANCE'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject missing destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers",
+            "description": "Expected HTTP 404. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_account_id\": \"{{account_a_id}}\",\n  \"destination_account_id\": \"{{missing_account_id}}\",\n  \"amount\": \"20.00\",\n  \"description\": \"Postman transfer\",\n  \"reference_id\": \"{{run_id}}-missing-destination\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: ACCOUNT_NOT_FOUND', function () { pm.expect(response.error.code).to.eql('ACCOUNT_NOT_FOUND'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject same-account transfer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_account_id\": \"{{account_a_id}}\",\n  \"destination_account_id\": \"{{account_a_id}}\",\n  \"amount\": \"20.00\",\n  \"description\": \"Postman transfer\",\n  \"reference_id\": \"{{run_id}}-transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final balance A: failed transfers changed nothing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/balance",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Correct final balance', function () { pm.expect(response.data.balance).to.eql(\"50.00\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final balance B: failed transfers changed nothing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_b_id}}/balance",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Correct final balance', function () { pm.expect(response.data.balance).to.eql(\"70.00\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A final history contains only 3 valid entries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Only valid transactions persisted', function () { pm.expect(response.pagination.total_records).to.eql(3); });",
+                  "pm.test('Latest-first timestamps', function () { const times = response.data.map(function (item) { return Date.parse(item.created_at); }); pm.expect(times).to.eql(times.slice().sort(function (a, b) { return b - a; })); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Validation and immutable transactions",
+      "item": [
+        {
+          "name": "Missing account name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Blank account name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \" \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Client cannot set initial balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Invalid\",\n  \"balance\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid transaction type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"refund\",\n  \"amount\": \"100.00\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Zero amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"0\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Negative amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"-1\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Extra decimal precision",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"1.001\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing reference",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"100.00\",\n  \"description\": \"Postman deposit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid pagination/filter: page=0",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?page=0",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid pagination/filter: limit=101",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?limit=101",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid pagination/filter: type=refund",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions?type=refund",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed account ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/not-a-uuid/balance",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: VALIDATION_ERROR', function () { pm.expect(response.error.code).to.eql('VALIDATION_ERROR'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing account balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{missing_account_id}}/balance",
+            "description": "Expected HTTP 404. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: ACCOUNT_NOT_FOUND', function () { pm.expect(response.error.code).to.eql('ACCOUNT_NOT_FOUND'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Transaction on missing account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{missing_account_id}}/transactions",
+            "description": "Expected HTTP 404. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"credit\",\n  \"amount\": \"100.00\",\n  \"description\": \"Postman deposit\",\n  \"reference_id\": \"{{run_id}}-credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: ACCOUNT_NOT_FOUND', function () { pm.expect(response.error.code).to.eql('ACCOUNT_NOT_FOUND'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 400. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: INVALID_JSON', function () { pm.expect(response.error.code).to.eql('INVALID_JSON'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong content type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts",
+            "description": "Expected HTTP 415. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "name=Alice",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 415', function () { pm.response.to.have.status(415); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: UNSUPPORTED_MEDIA_TYPE', function () { pm.expect(response.error.code).to.eql('UNSUPPORTED_MEDIA_TYPE'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cannot edit a transaction",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions/{{transaction_id}}",
+            "description": "Expected HTTP 404. Run the entire collection in order; setup creates fresh accounts on every run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"1.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: NOT_FOUND', function () { pm.expect(response.error.code).to.eql('NOT_FOUND'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cannot delete a transaction",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/transactions/{{transaction_id}}",
+            "description": "Expected HTTP 404. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Error code: NOT_FOUND', function () { pm.expect(response.error.code).to.eql('NOT_FOUND'); });",
+                  "pm.test('Error has request ID', function () { pm.expect(response.error.requestId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final A balance remains unchanged",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/accounts/{{account_a_id}}/balance",
+            "description": "Expected HTTP 200. Run the entire collection in order; setup creates fresh accounts on every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const response = pm.response.json();",
+                  "pm.test('Invalid requests changed nothing', function () { pm.expect(response.data.balance).to.eql(\"50.00\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
